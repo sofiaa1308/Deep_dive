@@ -1,0 +1,73 @@
+		with inspection as (
+			select
+				oportunidad__c,
+				opportunity_stage__c,
+				id,
+				createddate::date as fecha_creada,  
+				createdbyid,
+				Country__c,
+				Account__c,
+				status__c,
+				showroom__c,
+				DateTime__c::date as fecha_inspeccion
+			from salesforce_ssa_refined.inspection__c i 
+			where Country__c = 'PE'  
+				and isdeleted='false'
+				and fecha_inspeccion >= '2023-01-01'
+			),			
+		inspection__history as(
+			select  
+				parentid, 
+				min (createddate::date) as fecha_confirmacion
+			from salesforce_ssa_refined.inspection__history sih 
+			where field='Status__c' 
+				and newvalue<>'Cancelada' 
+				and newvalue<>'Pendiente' 
+			group by 1),
+		opp as(
+			select
+				loss_reason__c,
+				id,
+				stagename,
+				submotivo_de_perdida__c,
+				necesidad__c,
+				leadsource,
+				domain__c
+			from salesforce_ssa_refined.opportunity
+			)
+		select
+			opp.necesidad__c,
+			opp.loss_reason__c,
+			opp.submotivo_de_perdida__c,
+			opp.id,
+			opp.stagename,
+			inspection.oportunidad__c,
+			opportunity_stage__c,
+			inspection.id as idinspection,
+			inspection.Country__c,
+			inspection.Account__c,
+			inspection.status__c, 
+			inspection.fecha_creada,
+			inspection.fecha_inspeccion,
+			inspection.showroom__c,
+			opp.leadsource,
+			case when inspection.showroom__c = '0015Y00003dN3L9QAK' then 'Megaplaza'
+				when inspection.showroom__c = '0015Y00003dN3KvQAK' then 'HUB Salaverry' else 'No tiene cita o site' end as Hub_Inspeccion,
+			case when inspection.createdbyid='0055Y00000GWYkKQAX' then 1 
+				end as flag_online,
+			case when inspection__history.fecha_confirmacion is not null and inspection.status__c<>'Pendiente' then inspection__history.fecha_confirmacion 
+				else case when inspection.status__c<>'Pendiente' and inspection.status__c<>'Cancelada' then fecha_creada end
+				end as fecha_confirmacion,
+			case when inspection__history.parentid is not null and inspection.status__c='Cancelada' then 1 
+				else case when inspection.status__c<>'Pendiente' and inspection.status__c<>'Cancelada' then 1 end
+				end as flag_confirmed,
+			case when inspection.status__c in ('Aprobada','Rechazada') then 1 
+				end as flag_made,
+			case when inspection.status__c in ('Aprobada') then 1 
+				end as flag_approved,
+			opp.domain__c
+		from  inspection
+		left join inspection__history on inspection.id=inspection__history.parentid
+		left join opp on inspection.oportunidad__c=opp.id
+				where flag_made = 1
+				order by fecha_inspeccion asc;
